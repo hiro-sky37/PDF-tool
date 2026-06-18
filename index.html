@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Minimal PDF Editor</title>
+  <style>
+    :root {
+      --bg: #f7f7f5;
+      --card: #ffffff;
+      --text: #151515;
+      --muted: #757575;
+      --line: #e8e8e3;
+      --accent: #111111;
+      --danger: #b42318;
+      --selected: #eef0ec;
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body { overscroll-behavior-y: none; }
+
+    button, input { font: inherit; }
+
+    .app {
+      width: min(1120px, 100%);
+      margin: 0 auto;
+      padding: max(20px, env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 0;
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      min-width: 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+      font-weight: 650;
+    }
+
+    .sub {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 44vw;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .actions::-webkit-scrollbar { display: none; }
+
+    .btn {
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 9px 13px;
+      min-height: 38px;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .btn.danger {
+      color: var(--danger);
+    }
+
+    .btn:disabled {
+      opacity: .38;
+      cursor: default;
+    }
+
+    .empty {
+      min-height: calc(100svh - 110px);
+      display: grid;
+      place-items: center;
+    }
+
+    .drop {
+      width: min(520px, 100%);
+      border: 1.5px dashed #d7d7cf;
+      background: var(--card);
+      border-radius: 28px;
+      padding: 34px 22px;
+      text-align: center;
+      transition: .18s ease;
+    }
+
+    .drop.is-over {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .drop strong {
+      display: block;
+      font-size: 20px;
+      letter-spacing: -0.03em;
+      margin-bottom: 8px;
+    }
+
+    .drop p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .file-input { display: none; }
+
+    .status {
+      margin: 10px 0 14px;
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 18px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 14px;
+      align-items: start;
+      padding-top: 4px;
+    }
+
+    .page-card {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--card);
+      padding: 10px;
+      cursor: pointer;
+      user-select: none;
+      touch-action: manipulation;
+      transition: border-color .15s ease, background .15s ease, transform .15s ease;
+    }
+
+    .page-card.selected {
+      border-color: var(--accent);
+      background: var(--selected);
+    }
+
+    .page-card.sortable-ghost {
+      opacity: .35;
+    }
+
+    .thumb {
+      display: grid;
+      place-items: center;
+      min-height: 190px;
+      border-radius: 12px;
+      background: #f0f0ec;
+      overflow: hidden;
+    }
+
+    canvas {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,.05);
+    }
+
+    .meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 9px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .handle {
+      letter-spacing: .08em;
+      color: #aaa;
+    }
+
+    .check {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.88);
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      opacity: 0;
+      transform: scale(.9);
+      transition: .15s ease;
+    }
+
+    .selected .check {
+      opacity: 1;
+      transform: scale(1);
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(18px + env(safe-area-inset-bottom));
+      transform: translateX(-50%) translateY(18px);
+      max-width: min(420px, calc(100% - 28px));
+      padding: 11px 14px;
+      border-radius: 999px;
+      background: rgba(20,20,20,.92);
+      color: #fff;
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transition: .18s ease;
+      z-index: 30;
+      text-align: center;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    @media (max-width: 720px) {
+      .app { padding-inline: 12px; }
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .sub { max-width: 100%; }
+      .actions { width: 100%; padding-bottom: 2px; }
+      .btn { padding-inline: 12px; }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .thumb { min-height: 150px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div class="brand">
+        <h1>PDF Editor</h1>
+        <div class="sub" id="fileInfo">PDFを読み込んでください</div>
+      </div>
+      <div class="actions" aria-label="PDF操作">
+        <button class="btn" id="openBtn">PDFを選択</button>
+        <button class="btn" id="rotateLeftBtn" disabled>左回転</button>
+        <button class="btn" id="rotateRightBtn" disabled>右回転</button>
+        <button class="btn danger" id="deleteBtn" disabled>削除</button>
+        <button class="btn primary" id="saveBtn" disabled>保存</button>
+      </div>
+    </header>
+
+    <input class="file-input" id="fileInput" type="file" accept="application/pdf,.pdf" />
+
+    <section class="empty" id="emptyView">
+      <label class="drop" id="dropZone" for="fileInput">
+        <strong>PDFをここに置く</strong>
+        <p>ページを選択して回転・削除。<br>ドラッグで順番を並び替え。</p>
+        <span class="btn primary">PDFを選択</span>
+      </label>
+    </section>
+
+    <div class="status" id="status"></div>
+    <section class="grid" id="pageGrid" aria-live="polite"></section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <script>
+    const els = {
+      fileInfo: document.getElementById('fileInfo'),
+      openBtn: document.getElementById('openBtn'),
+      fileInput: document.getElementById('fileInput'),
+      dropZone: document.getElementById('dropZone'),
+      emptyView: document.getElementById('emptyView'),
+      pageGrid: document.getElementById('pageGrid'),
+      status: document.getElementById('status'),
+      rotateLeftBtn: document.getElementById('rotateLeftBtn'),
+      rotateRightBtn: document.getElementById('rotateRightBtn'),
+      deleteBtn: document.getElementById('deleteBtn'),
+      saveBtn: document.getElementById('saveBtn'),
+      toast: document.getElementById('toast')
+    };
+
+    const libsReady = Boolean(window.pdfjsLib && window.PDFLib && window.Sortable);
+    if (libsReady) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    }
+
+    const state = {
+      fileName: '',
+      originalBytes: null,
+      pdf: null,
+      pages: [],
+      renderToken: 0,
+      sortable: null
+    };
+
+    function uid() {
+      if (crypto && crypto.randomUUID) return crypto.randomUUID();
+      return String(Date.now()) + '-' + Math.random().toString(16).slice(2);
+    }
+
+    function normalizeDeg(deg) {
+      return ((deg % 360) + 360) % 360;
+    }
+
+    function selectedPages() {
+      return state.pages.filter(page => page.selected);
+    }
+
+    function setStatus(text = '') {
+      els.status.textContent = text;
+    }
+
+    let toastTimer = null;
+    function toast(text) {
+      els.toast.textContent = text;
+      els.toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => els.toast.classList.remove('show'), 1900);
+    }
+
+    function updateToolbar() {
+      const selected = selectedPages().length;
+      const total = state.pages.length;
+      els.fileInfo.textContent = state.fileName
+        ? `${state.fileName} / ${total}ページ / ${selected}選択中`
+        : 'PDFを読み込んでください';
+
+      els.rotateLeftBtn.disabled = selected === 0;
+      els.rotateRightBtn.disabled = selected === 0;
+      els.deleteBtn.disabled = selected === 0;
+      els.saveBtn.disabled = !state.originalBytes || total === 0;
+    }
+
+    function findCardById(id) {
+      return Array.from(els.pageGrid.children).find(node => node.dataset.id === id);
+    }
+
+    function toggleSelected(id) {
+      const page = state.pages.find(item => item.id === id);
+      if (!page) return;
+      page.selected = !page.selected;
+      const card = findCardById(id);
+      if (card) card.classList.toggle('selected', page.selected);
+      updateToolbar();
+    }
+
+    function reorderFromDom() {
+      const order = Array.from(els.pageGrid.children).map(node => node.dataset.id);
+      const byId = new Map(state.pages.map(page => [page.id, page]));
+      state.pages = order.map(id => byId.get(id)).filter(Boolean);
+      refreshMetaOnly();
+      updateToolbar();
+    }
+
+    function refreshMetaOnly() {
+      Array.from(els.pageGrid.children).forEach((card, index) => {
+        const page = state.pages[index];
+        if (!page) return;
+        const number = card.querySelector('[data-role="number"]');
+        const rotation = card.querySelector('[data-role="rotation"]');
+        number.textContent = `${index + 1}`;
+        rotation.textContent = page.rotation ? `${page.rotation}°` : '';
+      });
+    }
+
+    function initSortable() {
+      if (!window.Sortable) return;
+      if (state.sortable) state.sortable.destroy();
+      state.sortable = new Sortable(els.pageGrid, {
+        animation: 150,
+        delay: 110,
+        delayOnTouchOnly: true,
+        ghostClass: 'sortable-ghost',
+        onEnd: reorderFromDom
+      });
+    }
+
+    function makeCard(pageState, displayIndex) {
+      const card = document.createElement('article');
+      card.className = 'page-card' + (pageState.selected ? ' selected' : '');
+      card.dataset.id = pageState.id;
+      card.setAttribute('aria-label', `${displayIndex + 1}ページ目`);
+
+      const thumb = document.createElement('div');
+      thumb.className = 'thumb';
+      thumb.textContent = '読み込み中';
+
+      const check = document.createElement('div');
+      check.className = 'check';
+      check.textContent = '✓';
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.innerHTML = `<span>Page <b data-role="number">${displayIndex + 1}</b></span><span data-role="rotation"></span><span class="handle">⋮⋮</span>`;
+
+      card.append(thumb, check, meta);
+      card.addEventListener('click', event => {
+        if (card.classList.contains('sortable-chosen')) return;
+        toggleSelected(pageState.id);
+      });
+      return card;
+    }
+
+    async function renderThumbnail(pageState, card, token) {
+      const thumb = card.querySelector('.thumb');
+      try {
+        const pdfPage = await state.pdf.getPage(pageState.originalIndex + 1);
+        if (token !== state.renderToken) return;
+
+        const baseViewport = pdfPage.getViewport({ scale: 1 });
+        const maxWidth = 220;
+        const scale = Math.min(1.7, maxWidth / baseViewport.width);
+        const viewport = pdfPage.getViewport({
+          scale,
+          rotation: normalizeDeg((pdfPage.rotate || 0) + pageState.rotation)
+        });
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d', { alpha: false });
+        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+        canvas.style.width = Math.floor(viewport.width) + 'px';
+        canvas.style.height = Math.floor(viewport.height) + 'px';
+        context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+
+        await pdfPage.render({ canvasContext: context, viewport }).promise;
+        if (token !== state.renderToken) return;
+        thumb.textContent = '';
+        thumb.appendChild(canvas);
+      } catch (error) {
+        thumb.textContent = '表示できません';
+        console.error(error);
+      }
+    }
+
+    async function renderAllPages() {
+      const token = ++state.renderToken;
+      els.emptyView.style.display = 'none';
+      els.pageGrid.innerHTML = '';
+      setStatus('サムネイルを作成中…');
+
+      state.pages.forEach((page, index) => {
+        const card = makeCard(page, index);
+        els.pageGrid.appendChild(card);
+      });
+      initSortable();
+      updateToolbar();
+
+      const cards = Array.from(els.pageGrid.children);
+      for (let i = 0; i < state.pages.length; i++) {
+        if (token !== state.renderToken) return;
+        await renderThumbnail(state.pages[i], cards[i], token);
+        if (i % 4 === 0 || i === state.pages.length - 1) {
+          setStatus(`${i + 1} / ${state.pages.length} ページ表示`);
+        }
+      }
+      setStatus('');
+    }
+
+    async function loadPdf(file) {
+      if (!libsReady) {
+        toast('必要なライブラリを読み込めませんでした');
+        return;
+      }
+
+      const isPdf = file && (file.type === 'application/pdf' || /\.pdf$/i.test(file.name));
+      if (!isPdf) {
+        toast('PDFファイルを選択してください');
+        return;
+      }
+
+      try {
+        setStatus('PDFを読み込み中…');
+        els.pageGrid.innerHTML = '';
+        state.fileName = file.name.replace(/\.pdf$/i, '');
+        state.originalBytes = await file.arrayBuffer();
+        state.pdf = await pdfjsLib.getDocument({ data: new Uint8Array(state.originalBytes.slice(0)) }).promise;
+        state.pages = Array.from({ length: state.pdf.numPages }, (_, index) => ({
+          id: uid(),
+          originalIndex: index,
+          rotation: 0,
+          selected: false
+        }));
+        await renderAllPages();
+      } catch (error) {
+        console.error(error);
+        resetApp();
+        toast('PDFを読み込めませんでした');
+      }
+    }
+
+    function resetApp() {
+      state.fileName = '';
+      state.originalBytes = null;
+      state.pdf = null;
+      state.pages = [];
+      state.renderToken++;
+      els.pageGrid.innerHTML = '';
+      els.emptyView.style.display = 'grid';
+      setStatus('');
+      updateToolbar();
+    }
+
+    async function rerenderSelectedCards() {
+      const token = ++state.renderToken;
+      const selectedIds = new Set(selectedPages().map(page => page.id));
+      const cards = Array.from(els.pageGrid.children);
+      for (let i = 0; i < state.pages.length; i++) {
+        const page = state.pages[i];
+        if (!selectedIds.has(page.id)) continue;
+        const card = cards.find(item => item.dataset.id === page.id);
+        if (!card) continue;
+        const thumb = card.querySelector('.thumb');
+        thumb.textContent = '更新中';
+        await renderThumbnail(page, card, token);
+      }
+      refreshMetaOnly();
+      setStatus('');
+    }
+
+    function rotateSelected(delta) {
+      const selected = selectedPages();
+      if (!selected.length) return;
+      selected.forEach(page => {
+        page.rotation = normalizeDeg(page.rotation + delta);
+      });
+      setStatus('回転を反映中…');
+      rerenderSelectedCards();
+      updateToolbar();
+    }
+
+    function deleteSelected() {
+      const selected = selectedPages();
+      if (!selected.length) return;
+      if (selected.length >= state.pages.length) {
+        toast('全ページは削除できません');
+        return;
+      }
+      const selectedIds = new Set(selected.map(page => page.id));
+      state.pages = state.pages.filter(page => !selectedIds.has(page.id));
+      selectedIds.forEach(id => {
+        const node = findCardById(id);
+        if (node) node.remove();
+      });
+      refreshMetaOnly();
+      updateToolbar();
+      toast(`${selected.length}ページ削除しました`);
+    }
+
+    async function savePdf() {
+      if (!libsReady || !state.originalBytes || !state.pages.length) return;
+
+      const oldText = els.saveBtn.textContent;
+      els.saveBtn.textContent = '保存中…';
+      els.saveBtn.disabled = true;
+      setStatus('PDFを書き出し中…');
+
+      try {
+        const { PDFDocument, degrees } = PDFLib;
+        const source = await PDFDocument.load(state.originalBytes.slice(0));
+        const output = await PDFDocument.create();
+        const copiedPages = await output.copyPages(source, state.pages.map(page => page.originalIndex));
+
+        copiedPages.forEach((copiedPage, index) => {
+          const pageState = state.pages[index];
+          const sourcePage = source.getPage(pageState.originalIndex);
+          const originalRotation = sourcePage.getRotation().angle || 0;
+          copiedPage.setRotation(degrees(normalizeDeg(originalRotation + pageState.rotation)));
+          output.addPage(copiedPage);
+        });
+
+        const bytes = await output.save();
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${state.fileName || 'edited'}-edited.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        toast('保存しました');
+      } catch (error) {
+        console.error(error);
+        toast('保存できませんでした');
+      } finally {
+        els.saveBtn.textContent = oldText;
+        setStatus('');
+        updateToolbar();
+      }
+    }
+
+    els.openBtn.addEventListener('click', () => els.fileInput.click());
+    els.fileInput.addEventListener('change', event => loadPdf(event.target.files[0]));
+    els.rotateLeftBtn.addEventListener('click', () => rotateSelected(-90));
+    els.rotateRightBtn.addEventListener('click', () => rotateSelected(90));
+    els.deleteBtn.addEventListener('click', deleteSelected);
+    els.saveBtn.addEventListener('click', savePdf);
+
+    ['dragenter', 'dragover'].forEach(type => {
+      els.dropZone.addEventListener(type, event => {
+        event.preventDefault();
+        els.dropZone.classList.add('is-over');
+      });
+      document.body.addEventListener(type, event => event.preventDefault());
+    });
+
+    ['dragleave', 'drop'].forEach(type => {
+      els.dropZone.addEventListener(type, event => {
+        event.preventDefault();
+        els.dropZone.classList.remove('is-over');
+      });
+    });
+
+    els.dropZone.addEventListener('drop', event => {
+      const file = event.dataTransfer.files[0];
+      loadPdf(file);
+    });
+
+    document.body.addEventListener('drop', event => event.preventDefault());
+
+    if (!libsReady) {
+      els.fileInfo.textContent = 'ライブラリを読み込めませんでした';
+      els.openBtn.disabled = true;
+      setStatus('ネットワーク接続を確認するか、ライブラリをローカル配置してください。');
+    }
+    updateToolbar();
+  </script>
+</body>
+</html>
