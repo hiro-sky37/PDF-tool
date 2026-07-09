@@ -1,6 +1,7 @@
 # Minimal PDF Editor
 
 ブラウザだけで動くミニマルなPDF編集ツールです。
+[サイトを開く](https://hiro-sky37.github.io/PDF-tool/)
 
 ## 機能
 
